@@ -2,7 +2,7 @@
 
 A white-label activity tracking board for teams and communities. Built on Azure Static Web Apps with Entra ID authentication, blob storage, and no build tools.
 
-The rebuilt `Site/v2/` app targets **WCAG 2.2 AAA** conformance. The original React app remains at the site root until final cutover (see `DEPLOYMENT.md`).
+The rebuilt `Site/v2/` app targets **WCAG 2.2 AAA** conformance. The original React app remains at the site root and both apps run on the same origin permanently (see `DEPLOYMENT.md`).
 
 ---
 

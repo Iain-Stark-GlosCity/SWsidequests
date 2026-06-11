@@ -154,9 +154,9 @@ Browse to `http://localhost:4280/v2/`. The mock sign-in page lets you switch bet
 
 ---
 
-## Go/no-go decisions (not yet executed)
+## Go/no-go decision (not yet executed)
 
-These two steps are documented here but intentionally not automated. Both require a team decision.
+This step is documented here but intentionally not automated. It requires a team decision.
 
 ### Enabling `/api/*` authentication on `main`
 
@@ -165,14 +165,13 @@ The `Site/staticwebapp.config.json` route `"/api/*": authenticated` currently pr
 - The existing React app at the site root will silently fall back to localStorage demo mode (it already does this when the API returns 401).
 - Confirm with your team before enabling.
 
-### Final cutover (promoting `Site/v2/` to root)
+---
 
-When the v2 app is ready to become the primary app:
+## Keeping both apps permanently
 
-1. Move all files from `Site/v2/` to `Site/` (overwriting the React app files).
-2. Delete `Site/quest-*.jsx`, `Site/quest-styles.css`, `Site/index.html` (the old React entry point), and the Google Fonts links.
-3. In `Site/staticwebapp.config.json`:
-   - Remove the `.jsx` mimeType entry.
-   - Change the 404 rewrite from `/index.html` to `/404.html`.
-   - Remove `skip_app_build: true` comment if desired (still not needed).
-4. Update the `routes` to remove `/v2/` prefixes.
+The React app at `Site/` and the v2 app at `Site/v2/` can coexist indefinitely — no cutover required. Both run on the same origin:
+
+- `https://<site>/` — original React app (unchanged)
+- `https://<site>/v2/` — rebuilt v2 app
+
+The only lasting side-effect of keeping both is that the site-wide 404 rewrite in `staticwebapp.config.json` points to the React app's `/index.html` rather than `/v2/404.html`. Unmatched paths fall into the React SPA rather than serving a plain 404 page. This causes no functional breakage.
