@@ -21,10 +21,15 @@ function initTheme() {
   const current = stored || (prefersDark ? 'dark' : 'light');
   applyScheme(current);
 
-  btn.addEventListener('click', () => {
+  btn.addEventListener('click', async () => {
     const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
     localStorage.setItem('sw::theme', next);
     applyScheme(next);
+    /* Re-apply config-driven colour overrides for the new scheme */
+    try {
+      const { loadConfig, applyTheme } = await import('./config-loader.js');
+      applyTheme(await loadConfig());
+    } catch { /* ignore */ }
   });
 
   function applyScheme(scheme) {
