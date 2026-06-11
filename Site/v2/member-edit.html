@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Activity — Activity Board</title>
+  <title>Edit profile — Activity Board</title>
   <link rel="stylesheet" href="css/tokens.css">
   <link rel="stylesheet" href="css/base.css">
   <link rel="stylesheet" href="css/components.css">
@@ -35,30 +35,34 @@
     <nav aria-label="Breadcrumb" class="breadcrumb">
       <ol>
         <li><a href="index.html">Board</a></li>
-        <li aria-current="page" id="breadcrumb-current">Activity</li>
+        <li><a href="members.html">Members</a></li>
+        <li><a href="" id="breadcrumb-member">Profile</a></li>
+        <li aria-current="page">Edit</li>
       </ol>
     </nav>
 
-    <h1 id="item-title" tabindex="-1">Activity</h1>
+    <h1 id="page-title">Edit profile</h1>
 
-    <div id="item-content">
-      <p class="loading">Loading activity…</p>
+    <div id="form-errors" class="error-summary" role="alert" hidden
+         aria-labelledby="form-errors-title">
+      <h2 id="form-errors-title" class="error-summary__title">There is a problem</h2>
+      <ul class="error-summary__list"></ul>
     </div>
 
-    <section id="item-actions" aria-label="Activity actions">
-      <!-- populated by item.js once session and item are loaded -->
-    </section>
+    <div id="edit-form-container">
+      <p class="loading">Loading…</p>
+    </div>
   </main>
 
   <div role="status" aria-live="polite" id="live-region" class="sr-only"></div>
 
   <noscript>
     <div class="noscript-notice">
-      <p>JavaScript is required to load this activity.</p>
+      <p>JavaScript is required to edit your profile.</p>
     </div>
   </noscript>
 
   <script type="module" src="js/shell.js"></script>
-  <script type="module" src="js/pages/item.js"></script>
+  <script type="module" src="js/pages/member-edit.js"></script>
 </body>
 </html>

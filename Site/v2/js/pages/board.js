@@ -58,12 +58,18 @@ function buildSection(type, termKey) {
 
   const section = el('section', { 'aria-labelledby': headingId, class: 'board-section' });
 
+  const newHref = { experiment: 'new-experiment.html', session: 'new-session.html', challenge: 'new-challenge.html' }[type];
   const hWrap = el('div', { class: 'board-section-heading' },
     el('h2', { id: headingId },
       plural,
       el('span', { class: 'board-section-count', 'aria-label': `${items.length} items` },
         ` (${items.length})`),
     ),
+    newHref
+      ? el('a', { href: newHref, class: 'btn btn-secondary' },
+          el('span', { 'aria-hidden': 'true' }, '+ '),
+          `New ${t(_config, termKey + '.singular').toLowerCase()}`)
+      : null,
   );
   section.appendChild(hWrap);
 
