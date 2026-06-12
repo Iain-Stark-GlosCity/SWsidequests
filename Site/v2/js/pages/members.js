@@ -5,14 +5,15 @@ import { el, announce } from '../dom.js';
 
 let _members = [];
 let _config = null;
+let _session = null;
 
 function initials(name) {
   return (name || '?').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
 async function init() {
-  const session = await requireSignIn();
-  if (!session) return;
+  _session = await requireSignIn();
+  if (!_session) return;
   _config = await loadConfig();
 
   const membersName = (_config.terminology || {}).members_name || 'Members';
@@ -56,11 +57,12 @@ function buildMemberCard(m) {
   inner.appendChild(avatar);
 
   const info = el('div', { class: 'member-info' });
-  info.appendChild(el('h3', { class: 'card-title' },
+  info.appendChild(el('h2', { class: 'card-title' },
     el('a', { href: `member.html?id=${encodeURIComponent(m.oid)}` },
       el('span', { class: 'sr-only' }, 'View member: '),
       m.name || 'Unknown',
     ),
+    _session && m.oid === _session.oid ? el('span', { class: 'card-meta' }, ' (you)') : null,
   ));
 
   if (m.expertise && m.expertise.length) {
@@ -69,6 +71,14 @@ function buildMemberCard(m) {
       tagList.appendChild(el('li', { class: 'tag', text: tag }));
     }
     info.appendChild(tagList);
+  }
+
+  if (m.stretch && m.stretch.length) {
+    info.appendChild(el('p', { class: 'card-meta', text: `Wants to learn: ${m.stretch.join(', ')}` }));
+  }
+
+  if (m.talk_about && m.talk_about.length) {
+    info.appendChild(el('p', { class: 'card-meta', text: `Ask about: ${m.talk_about.join(', ')}` }));
   }
 
   inner.appendChild(info);
@@ -104,7 +114,8 @@ function filterMembers(members, q) {
     const name = (m.name || '').toLowerCase();
     const expertise = (m.expertise || []).join(' ').toLowerCase();
     const stretch = (m.stretch || []).join(' ').toLowerCase();
-    return name.includes(q) || expertise.includes(q) || stretch.includes(q);
+    const talkAbout = (m.talk_about || []).join(' ').toLowerCase();
+    return name.includes(q) || expertise.includes(q) || stretch.includes(q) || talkAbout.includes(q);
   });
 }
 

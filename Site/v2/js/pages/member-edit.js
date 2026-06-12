@@ -2,7 +2,8 @@ import { requireSignIn } from '../auth.js';
 import { loadConfig } from '../config-loader.js';
 import { loadMembers, saveMember } from '../data.js';
 import { el, moveFocus } from '../dom.js';
-import { validate, showErrors, clearErrors, saveDraft, loadDraft, clearDraft, autosaveDraft } from '../forms.js';
+import { buildTagsField } from '../tag-field.js';
+import { validate, showErrors, clearErrors, loadDraft, clearDraft, autosaveDraft } from '../forms.js';
 
 const MAX_TAGS = 5;
 const MAX_STRETCH = 3;
@@ -125,68 +126,6 @@ function renderForm(values, config, session, draftKey) {
 
   container.replaceChildren(form);
   moveFocus(form.querySelector('#name'));
-}
-
-/* Tag input: comma or Enter to add, click × to remove */
-function buildTagsField(id, label, hint, existing, maxCount) {
-  const group = el('div', { class: 'form-group' });
-  group.appendChild(el('label', { for: `${id}-input`, text: label }));
-  group.appendChild(el('span', { class: 'form-hint', id: `${id}-hint`, text: hint }));
-
-  const tagDisplay = el('ul', { class: 'tag-list', id: `${id}-display`, role: 'list',
-    'aria-label': `${label} — current tags` });
-  group.appendChild(tagDisplay);
-
-  const inputRow = el('div', { style: 'display:flex;gap:var(--space-2);margin-top:var(--space-2)' });
-  const input = el('input', { type: 'text', id: `${id}-input`, autocomplete: 'off',
-    'aria-describedby': `${id}-hint`, placeholder: 'Type and press Enter or comma' });
-  input.style.flex = '1';
-  const addBtn = el('button', { type: 'button', class: 'btn-secondary' }, 'Add');
-  inputRow.appendChild(input);
-  inputRow.appendChild(addBtn);
-  group.appendChild(inputRow);
-
-  /* Hidden input to carry array values */
-  const hidden = el('input', { type: 'hidden', id, name: id });
-  group.appendChild(hidden);
-
-  let tags = [...existing];
-
-  function refresh() {
-    hidden.value = JSON.stringify(tags);
-    tagDisplay.replaceChildren();
-    for (const [i, tag] of tags.entries()) {
-      const li = el('li', { class: 'tag', style: 'display:flex;align-items:center;gap:0.25rem' });
-      li.appendChild(document.createTextNode(tag));
-      const rem = el('button', { type: 'button', 'aria-label': `Remove ${tag}`,
-        style: 'background:none;border:none;cursor:pointer;padding:0 0 0 0.25rem;min-height:auto;font-size:1rem;color:inherit' }, '×');
-      rem.addEventListener('click', () => { tags.splice(i, 1); refresh(); group.dispatchEvent(new Event('input', { bubbles: true })); });
-      li.appendChild(rem);
-      tagDisplay.appendChild(li);
-    }
-    input.disabled = tags.length >= maxCount;
-    addBtn.disabled = tags.length >= maxCount;
-  }
-
-  function addTag(raw) {
-    const t = raw.trim().replace(/,+$/, '').trim();
-    if (!t || tags.includes(t) || tags.length >= maxCount) return;
-    tags.push(t);
-    refresh();
-    group.dispatchEvent(new Event('input', { bubbles: true }));
-  }
-
-  addBtn.addEventListener('click', () => { addTag(input.value); input.value = ''; input.focus(); });
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ',') {
-      e.preventDefault();
-      addTag(input.value);
-      input.value = '';
-    }
-  });
-
-  refresh();
-  return group;
 }
 
 function getFormValues(form, oid) {

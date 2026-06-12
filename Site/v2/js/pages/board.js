@@ -1,31 +1,63 @@
 import { requireSignIn } from '../auth.js';
+import { ensureRegistered } from '../onboarding.js';
 import { loadConfig, t } from '../config-loader.js';
-import { loadItems, timeAgo } from '../data.js';
-import { el, renderRegion, announce, chipEl, statusVariant } from '../dom.js';
+import { loadItems, loadLeaderboard, rankFor, timeAgo, fullDate } from '../data.js';
+import { el, announce, chipEl, statusVariant, moveFocus } from '../dom.js';
 
 const SECTIONS = [
-  { type: 'experiment', termKey: 'items.experiment' },
-  { type: 'session',    termKey: 'items.session' },
-  { type: 'challenge',  termKey: 'items.challenge' },
+  { type: 'experiment', termKey: 'items.experiment', newHref: 'new-experiment.html' },
+  { type: 'session',    termKey: 'items.session',    newHref: 'new-session.html' },
+  { type: 'challenge',  termKey: 'items.challenge',  newHref: 'new-challenge.html' },
 ];
 
+const ACTIVE_STATUSES = ['designing', 'running', 'wrapping-up', 'scheduled', 'happened', 'open'];
+const DONE_STATUSES = ['finding-shared', 'output-shared', 'closed'];
+
+const FILTER_LABELS = { all: 'All', mine: 'Mine', active: 'Active', done: 'Completed' };
+
 let _items = [];
+let _leaderboard = {};
 let _config = null;
+let _session = null;
+let _filter = 'all';
 let _autoUpdateTimer = null;
 
 async function init() {
-  const session = await requireSignIn();
-  if (!session) return;
+  _session = await requireSignIn();
+  if (!_session) return;
+
+  /* First connect: no member profile yet → welcome flow registers you */
+  if (await ensureRegistered(_session)) return;
+
   _config = await loadConfig();
+  applyTerminology();
+  renderWelcomeBanner();
   await refresh();
   setupControls();
 }
+
+function applyTerminology() {
+  const boardName = (_config.terminology || {}).board_name || 'Board';
+  const h1 = document.getElementById('page-title');
+  if (h1) h1.textContent = boardName;
+}
+
+/* ── Data loading ─────────────────────────────────────────────────────────── */
 
 async function refresh() {
   const loadingEl = document.getElementById('board-loading');
   if (loadingEl) loadingEl.hidden = false;
   try {
-    _items = await loadItems();
+    const wantPoints = _config.points && _config.points.enabled;
+    const [items, lb] = await Promise.all([
+      loadItems(),
+      wantPoints ? loadLeaderboard().catch(() => ({})) : Promise.resolve({}),
+    ]);
+    _items = items;
+    _leaderboard = lb;
+    renderGreeting();
+    renderNextSteps();
+    renderLearning();
     renderBoard();
     announce(`Board updated — ${_items.length} activit${_items.length !== 1 ? 'ies' : 'y'} loaded`);
   } catch (err) {
@@ -35,46 +67,276 @@ async function refresh() {
   }
 }
 
+/* ── Greeting strip ───────────────────────────────────────────────────────── */
+
+function renderGreeting() {
+  const p = document.getElementById('home-greeting');
+  if (!p) return;
+  const first = (_session.name || '').split(/\s+/)[0] || 'there';
+  const bits = [`Hi ${first}.`];
+
+  if (_config.points && _config.points.enabled) {
+    const entry = _leaderboard[_session.oid];
+    const xp = entry && typeof entry.xp === 'number' ? entry.xp : 0;
+    const ptsName = (_config.terminology || {}).points_name || 'points';
+    const rank = rankFor(xp, _config.points.ranks);
+    bits.push(`You have ${xp} ${ptsName}${rank ? ` — ${rank}` : ''}.`);
+  }
+
+  const pulse = buildPulse();
+  if (pulse) bits.push(pulse);
+  p.textContent = bits.join(' ');
+}
+
+function buildPulse() {
+  const counts = [];
+  const exp = _items.filter((i) => i.item_type === 'experiment' && ACTIVE_STATUSES.includes(i.status)).length;
+  if (exp) {
+    counts.push(`${exp} ${t(_config, exp === 1 ? 'items.experiment.singular' : 'items.experiment.plural').toLowerCase()} in flight`);
+  }
+  if (_config.features.sessions) {
+    const sess = _items.filter((i) => i.item_type === 'session' && i.status === 'scheduled').length;
+    if (sess) {
+      counts.push(`${sess} ${t(_config, sess === 1 ? 'items.session.singular' : 'items.session.plural').toLowerCase()} coming up`);
+    }
+  }
+  if (_config.features.challenges) {
+    const chal = _items.filter((i) => i.item_type === 'challenge' && i.status === 'open').length;
+    if (chal) {
+      counts.push(`${chal} open ${t(_config, chal === 1 ? 'items.challenge.singular' : 'items.challenge.plural').toLowerCase()}`);
+    }
+  }
+  if (!counts.length) return '';
+  return `Across the team: ${counts.join(', ')}.`;
+}
+
+/* ── Post-onboarding welcome banner ──────────────────────────────────────── */
+
+function renderWelcomeBanner() {
+  const params = new URLSearchParams(location.search);
+  if (params.get('welcome') !== '1') return;
+  const box = document.getElementById('welcome-banner');
+  if (!box) return;
+
+  const first = (_session.name || '').split(/\s+/)[0] || 'there';
+  const banner = el('div', { class: 'status-message status-message--success', role: 'status' },
+    el('p', { text: `You're all set, ${first} — your profile is live. This page is your home: your next steps are listed first, and you can update your profile any time from the Members page.` }),
+  );
+  const dismiss = el('button', { type: 'button', class: 'status-message__dismiss',
+    'aria-label': 'Dismiss welcome message' },
+    el('span', { 'aria-hidden': 'true' }, '×'));
+  dismiss.addEventListener('click', () => {
+    box.replaceChildren();
+    moveFocus(document.getElementById('page-title'));
+  });
+  banner.appendChild(dismiss);
+  box.replaceChildren(banner);
+
+  /* Strip the query so a refresh doesn't re-show the banner */
+  history.replaceState(null, '', location.pathname);
+}
+
+/* ── Your next steps — light-touch nudges that close the loop ────────────── */
+
+function pointsSuffix(key) {
+  const pts = _config.points;
+  if (!pts || !pts.enabled || !pts.values || !pts.values[key]) return '.';
+  const ptsName = (_config.terminology || {}).points_name || 'points';
+  return ` and earns ${pts.values[key]} ${ptsName}.`;
+}
+
+function buildNudges() {
+  const oid = _session.oid;
+  const now = Date.now();
+  const nudges = [];
+
+  for (const item of _items) {
+    const title = item.title || '(Untitled)';
+    const href = `item.html?id=${encodeURIComponent(item.item_id)}`;
+    const owner = item.posted_by_oid === oid || item.host_oid === oid;
+    const onTeam = (item.team_oids || []).includes(oid);
+    const attending = (item.attendee_oids || []).includes(oid);
+
+    if (item.item_type === 'experiment' && (owner || onTeam)) {
+      if (item.status === 'designing') {
+        nudges.push({ href, link: `Start “${title}” running`,
+          context: 'Still in design — kick it off when the test is ready.' });
+      } else if (item.status === 'running') {
+        nudges.push({ href, link: `Post an update on “${title}”`,
+          context: `Running${item.updated_at ? ` — last activity ${timeAgo(item.updated_at)}` : ''}. Wrap up when you have an answer.` });
+      } else if (item.status === 'wrapping-up') {
+        nudges.push({ href, link: `Share the finding for “${title}”`,
+          context: `Sharing what you learned closes the loop${pointsSuffix('experiment_complete')}` });
+      }
+    } else if (item.item_type === 'session' && owner) {
+      const date = item.session_date ? new Date(item.session_date).getTime() : null;
+      if (item.status === 'scheduled' && (!date || date <= now)) {
+        nudges.push({ href, link: `Mark “${title}” as happened`,
+          context: 'Then share the output so others can learn from it.' });
+      } else if (item.status === 'happened') {
+        nudges.push({ href, link: `Share the output from “${title}”`,
+          context: `What was produced or decided? Sharing it closes the loop${pointsSuffix('session_host')}` });
+      }
+    } else if (item.item_type === 'session' && attending && item.status === 'scheduled'
+               && item.session_date && new Date(item.session_date).getTime() > now) {
+      nudges.push({ href, link: `View “${title}” — you're signed up`,
+        context: `Happening ${fullDate(item.session_date)}.` });
+    } else if (item.item_type === 'challenge' && owner && item.status === 'open') {
+      nudges.push({ href, link: `Review your challenge “${title}”`,
+        context: `Open since ${timeAgo(item.created_at)} — close it when you have what you need.` });
+    }
+  }
+
+  return nudges.slice(0, 6);
+}
+
+function renderNextSteps() {
+  const box = document.getElementById('next-steps');
+  if (!box) return;
+  const nudges = buildNudges();
+
+  if (!nudges.length) {
+    box.replaceChildren(buildStarterBlock());
+    return;
+  }
+
+  const ul = el('ul', { class: 'nudge-list', role: 'list' });
+  for (const n of nudges) {
+    ul.appendChild(el('li', { class: 'nudge-item' },
+      el('a', { href: n.href }, n.link),
+      el('span', { class: 'nudge-context' }, n.context),
+    ));
+  }
+  box.replaceChildren(ul);
+}
+
+function buildStarterBlock() {
+  const wrap = el('div');
+  wrap.appendChild(el('p', { text: 'Nothing needs your attention right now — a good time to start something small.' }));
+  const ul = el('ul', { class: 'nudge-list', role: 'list' });
+
+  const expSingular = t(_config, 'items.experiment.singular').toLowerCase();
+  ul.appendChild(starterItem('new-experiment.html', `Start a new ${expSingular}`,
+    'One question, one small test, one shared finding.'));
+
+  if (_config.features.sessions) {
+    const sessSingular = t(_config, 'items.session.singular').toLowerCase();
+    ul.appendChild(starterItem('new-session.html', `Host a new ${sessSingular}`,
+      'Share something you know — half an hour is plenty.'));
+  }
+  if (_config.features.challenges) {
+    const chalSingular = t(_config, 'items.challenge.singular').toLowerCase();
+    ul.appendChild(starterItem('new-challenge.html', `Post a new ${chalSingular}`,
+      'Ask the group for ideas or help with a problem.'));
+  }
+
+  wrap.appendChild(ul);
+  return wrap;
+}
+
+function starterItem(href, linkText, context) {
+  return el('li', { class: 'nudge-item' },
+    el('a', { href }, linkText),
+    el('span', { class: 'nudge-context' }, context),
+  );
+}
+
+/* ── Fresh learning — recently shared findings and outputs ───────────────── */
+
+function renderLearning() {
+  const section = document.getElementById('learning-section');
+  const box = document.getElementById('learning-list');
+  if (!section || !box) return;
+
+  const shared = _items
+    .filter((i) => (i.status === 'finding-shared' && i.finding) || (i.status === 'output-shared' && i.output))
+    .sort((a, b) => new Date(b.closed_at || b.updated_at || 0) - new Date(a.closed_at || a.updated_at || 0))
+    .slice(0, 4);
+
+  if (!shared.length) {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
+
+  const ul = el('ul', { class: 'learning-list', role: 'list' });
+  for (const item of shared) {
+    const isFinding = item.status === 'finding-shared';
+    const text = (isFinding ? item.finding : item.output) || '';
+    const snippet = text.length > 160 ? `${text.slice(0, 160)}…` : text;
+    const who = item.item_type === 'session' ? item.host_name : item.posted_by_name;
+    const when = item.closed_at || item.updated_at;
+
+    ul.appendChild(el('li', { class: 'learning-item' },
+      el('a', { href: `item.html?id=${encodeURIComponent(item.item_id)}` },
+        `${isFinding ? 'Finding' : 'Output'} from “${item.title || '(Untitled)'}”`),
+      el('p', { class: 'learning-snippet', text: snippet }),
+      el('p', { class: 'card-meta' },
+        who ? `Shared by ${who}` : 'Shared',
+        when ? el('time', { datetime: when }, ` · ${timeAgo(when)}`) : '',
+      ),
+    ));
+  }
+  box.replaceChildren(ul);
+}
+
+/* ── Board sections with filters ─────────────────────────────────────────── */
+
+function isMine(item) {
+  const oid = _session.oid;
+  return item.posted_by_oid === oid || item.host_oid === oid
+    || (item.team_oids || []).includes(oid)
+    || (item.attendee_oids || []).includes(oid);
+}
+
+function applyFilter(items) {
+  if (_filter === 'mine')   return items.filter((i) => isMine(i));
+  if (_filter === 'active') return items.filter((i) => ACTIVE_STATUSES.includes(i.status));
+  if (_filter === 'done')   return items.filter((i) => DONE_STATUSES.includes(i.status));
+  return items;
+}
+
+function byRecency(a, b) {
+  return new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0);
+}
+
 function renderBoard() {
   const container = document.getElementById('board-sections');
   if (!container) return;
   const frag = document.createDocumentFragment();
 
-  for (const { type, termKey } of SECTIONS) {
+  for (const { type, termKey, newHref } of SECTIONS) {
     if (type === 'challenge' && !_config.features.challenges) continue;
     if (type === 'session'    && !_config.features.sessions)   continue;
-
-    const section = buildSection(type, termKey);
-    frag.appendChild(section);
+    frag.appendChild(buildSection(type, termKey, newHref));
   }
 
   container.replaceChildren(frag);
 }
 
-function buildSection(type, termKey) {
-  const items = _items.filter((i) => i.item_type === type);
-  const plural = t(_config, termKey + '.plural');
+function buildSection(type, termKey, newHref) {
+  const allOfType = _items.filter((i) => i.item_type === type);
+  const items = applyFilter(allOfType).sort(byRecency);
+  const plural = t(_config, `${termKey}.plural`);
+  const singular = t(_config, `${termKey}.singular`);
   const headingId = `section-${type}`;
 
   const section = el('section', { 'aria-labelledby': headingId, class: 'board-section' });
 
-  const newHref = { experiment: 'new-experiment.html', session: 'new-session.html', challenge: 'new-challenge.html' }[type];
   const hWrap = el('div', { class: 'board-section-heading' },
-    el('h2', { id: headingId },
+    el('h3', { id: headingId },
       plural,
-      el('span', { class: 'board-section-count', 'aria-label': `${items.length} items` },
+      el('span', { class: 'board-section-count', 'aria-label': `${items.length} shown` },
         ` (${items.length})`),
     ),
-    newHref
-      ? el('a', { href: newHref, class: 'btn btn-secondary' },
-          el('span', { 'aria-hidden': 'true' }, '+ '),
-          `New ${t(_config, termKey + '.singular').toLowerCase()}`)
-      : null,
+    el('a', { href: newHref, class: 'btn btn-secondary' },
+      el('span', { 'aria-hidden': 'true' }, '+ '),
+      `New ${singular.toLowerCase()}`),
   );
   section.appendChild(hWrap);
 
   if (items.length === 0) {
-    section.appendChild(el('p', { class: 'empty-state' }, `No ${plural.toLowerCase()} yet.`));
+    section.appendChild(el('p', { class: 'empty-state', text: emptyMessage(type, allOfType.length, plural, singular) }));
     return section;
   }
 
@@ -86,13 +348,25 @@ function buildSection(type, termKey) {
   return section;
 }
 
+function emptyMessage(type, totalOfType, plural, singular) {
+  if (totalOfType > 0) {
+    return `No ${plural.toLowerCase()} match the “${FILTER_LABELS[_filter]}” filter.`;
+  }
+  const invitations = {
+    experiment: `No ${plural.toLowerCase()} yet. A ${singular.toLowerCase()} is a small test — one question, one finding. Start the first one.`,
+    session:    `No ${plural.toLowerCase()} yet. Host one to share something you know — half an hour is plenty.`,
+    challenge:  `No ${plural.toLowerCase()} yet. Post one when you need ideas or help from the group.`,
+  };
+  return invitations[type] || `No ${plural.toLowerCase()} yet.`;
+}
+
 function buildCard(item) {
   const singular = t(_config, `items.${item.item_type}.singular`);
   const li = el('li');
   const article = el('article', { class: 'card' });
 
   const header = el('div', { class: 'card-header' });
-  const titleEl = el('h3', { class: 'card-title' },
+  const titleEl = el('h4', { class: 'card-title' },
     el('a', { href: `item.html?id=${encodeURIComponent(item.item_id)}` },
       el('span', { class: 'sr-only' }, `View ${singular}: `),
       item.title || '(Untitled)',
@@ -111,6 +385,9 @@ function buildCard(item) {
   }
   article.appendChild(meta);
 
+  const facts = cardFacts(item);
+  if (facts) article.appendChild(el('p', { class: 'card-meta', text: facts }));
+
   if (item.description || item.question || item.topic) {
     const snippet = (item.description || item.question || item.topic || '').slice(0, 120);
     article.appendChild(el('p', { class: 'card-body', text: snippet + (snippet.length === 120 ? '…' : '') }));
@@ -118,6 +395,26 @@ function buildCard(item) {
 
   li.appendChild(article);
   return li;
+}
+
+/* One line of functional facts so cards answer "what's the state of this?" */
+function cardFacts(item) {
+  const facts = [];
+  if (item.item_type === 'session') {
+    if (item.session_date) {
+      facts.push(`${item.status === 'scheduled' ? 'Happening' : 'Held'} ${fullDate(item.session_date)}`);
+    }
+    const n = (item.attendee_oids || []).length;
+    facts.push(`${n} signed up`);
+  } else if (item.item_type === 'experiment') {
+    const n = (item.team_oids || []).length;
+    facts.push(`${n} on the team`);
+    if (item.deadline && !DONE_STATUSES.includes(item.status)) facts.push(`Due ${fullDate(item.deadline)}`);
+  } else if (item.item_type === 'challenge') {
+    const n = (item.response_ids || []).length;
+    facts.push(`${n} response${n !== 1 ? 's' : ''}`);
+  }
+  return facts.join(' · ');
 }
 
 function renderError(err) {
@@ -129,6 +426,8 @@ function renderError(err) {
     ),
   );
 }
+
+/* ── Controls ─────────────────────────────────────────────────────────────── */
 
 function setupControls() {
   const refreshBtn = document.getElementById('refresh-board');
@@ -149,6 +448,16 @@ function setupControls() {
         clearInterval(_autoUpdateTimer);
         _autoUpdateTimer = null;
       }
+    });
+  }
+
+  for (const radio of document.querySelectorAll('input[name="board-filter"]')) {
+    radio.addEventListener('change', () => {
+      if (!radio.checked) return;
+      _filter = radio.value;
+      renderBoard();
+      const shown = applyFilter(_items).length;
+      announce(`Filter: ${FILTER_LABELS[_filter]} — ${shown} activit${shown !== 1 ? 'ies' : 'y'} shown`);
     });
   }
 }

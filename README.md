@@ -34,7 +34,8 @@ The rebuilt `Site/v2/` app targets **WCAG 2.2 AAA** conformance. The original Re
 Site/
 ├── (legacy React app at root — untouched until final cutover)
 └── v2/                  # rebuilt app — self-contained, relative paths
-    ├── index.html       # Board
+    ├── index.html       # Home — your next steps, fresh learning, board
+    ├── welcome.html     # First-connect onboarding — registers new users
     ├── item.html        # Activity detail (?id=…)
     ├── new-*.html       # Create experiment/session/challenge
     ├── edit-item.html   # Edit any owned item
@@ -46,7 +47,7 @@ Site/
     ├── signin.html      # Entra sign-in / mock picker
     ├── 404.html
     ├── css/             # tokens.css, base.css, components.css
-    ├── js/              # api, auth, config-loader, data, dom, shell, forms, contrast
+    ├── js/              # api, auth, config-loader, data, dom, shell, forms, contrast, onboarding, tag-field
     └── js/pages/        # per-page modules
 api/
 ├── function.js          # HTTP routes
