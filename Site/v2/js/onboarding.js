@@ -1,51 +1,25 @@
-import { saveMember } from './data.js';
+/* First-connect prompt. Nothing is ever created automatically: a
+   signed-in account with no member record is redirected once per
+   session to the card editor, where no record exists until they
+   deliberately submit. After that one prompt, the board's
+   "create your guild card" next step takes over. */
 
-/* First-connect registration. The members store doubles as the user
-   registry: a signed-in account with no member record gets one created
-   silently — a blank guild card. No setup flow; the board invites the
-   user to complete their card when they're ready.
+const FLAG_PREFIX = 'sw::card-prompted::';
 
-   A per-session flag stops us retrying the create on every refresh if
-   the first attempt failed. */
-
-const FLAG_PREFIX = 'sw::registered::';
-
-export function markRegistered(oid) {
-  try { sessionStorage.setItem(FLAG_PREFIX + oid, '1'); } catch { /* ignore */ }
-}
-
-function alreadyTried(oid) {
+function promptedAlready(oid) {
   try { return Boolean(sessionStorage.getItem(FLAG_PREFIX + oid)); } catch { return false; }
 }
 
-/* Returns the caller's member record, creating a blank one on first
-   connect. `members` is the already-loaded member list; a newly created
-   record is appended to it. Returns null if creation isn't possible. */
-export async function ensureMember(session, members) {
-  if (!session || !session.authenticated || !Array.isArray(members)) return null;
+function markPrompted(oid) {
+  try { sessionStorage.setItem(FLAG_PREFIX + oid, '1'); } catch { /* ignore */ }
+}
 
-  const existing = members.find((m) => m.oid === session.oid);
-  if (existing) {
-    markRegistered(session.oid);
-    return existing;
-  }
-
-  if (alreadyTried(session.oid)) return null;
-  markRegistered(session.oid);
-
-  const member = {
-    oid: session.oid,
-    name: session.name || 'New member',
-    email: session.email || undefined,
-    skills: {},
-    fun_facts: [],
-    joined_at: new Date().toISOString(),
-  };
-  try {
-    await saveMember(member);
-  } catch {
-    return null;
-  }
-  members.push(member);
-  return member;
+/* Returns true when the caller should stop rendering because we are
+   redirecting to the card editor. */
+export function promptCardCreation(session) {
+  if (!session || !session.authenticated) return false;
+  if (promptedAlready(session.oid)) return false;
+  markPrompted(session.oid);
+  location.href = 'member-edit.html';
+  return true;
 }

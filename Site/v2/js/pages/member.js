@@ -27,7 +27,15 @@ async function init() {
     return;
   }
 
-  if (!member) { renderNotFound(); return; }
+  if (!member) {
+    /* Own card doesn't exist yet — go create it */
+    if (oid === session.oid) {
+      location.replace('member-edit.html');
+      return;
+    }
+    renderNotFound();
+    return;
+  }
 
   renderMember(member, lb, config, session);
 }

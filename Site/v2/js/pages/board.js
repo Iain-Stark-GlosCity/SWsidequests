@@ -1,5 +1,5 @@
 import { requireSignIn } from '../auth.js';
-import { ensureMember } from '../onboarding.js';
+import { promptCardCreation } from '../onboarding.js';
 import { loadConfig, t } from '../config-loader.js';
 import { loadItems, loadLeaderboard, loadMembers, rankFor, timeAgo, fullDate } from '../data.js';
 import { el, announce, chipEl, statusVariant } from '../dom.js';
@@ -21,6 +21,7 @@ let _leaderboard = {};
 let _config = null;
 let _session = null;
 let _myMember = null;
+let _membersLoaded = false;
 let _filter = 'all';
 let _autoUpdateTimer = null;
 
@@ -54,10 +55,12 @@ async function refresh() {
     _items = items;
     _leaderboard = lb;
 
-    /* First connect: registers you silently with a blank guild card;
-       the "complete your guild card" next step is the prompt */
-    if (members && !_myMember) {
-      _myMember = await ensureMember(_session, members);
+    /* First connect: no member record → one prompt to create your card.
+       Nothing is saved until the user submits it. */
+    if (members) {
+      _membersLoaded = true;
+      _myMember = members.find((m) => m.oid === _session.oid) || null;
+      if (!_myMember && promptCardCreation(_session)) return;
     }
 
     renderGreeting();
@@ -129,7 +132,9 @@ function buildNudges() {
   const now = Date.now();
   const nudges = [];
 
-  if (_myMember && isCardBlank(_myMember)) {
+  if (_membersLoaded && !_myMember) {
+    nudges.push({ href: 'member-edit.html', link: 'Create your guild card', context: '' });
+  } else if (_myMember && isCardBlank(_myMember)) {
     nudges.push({ href: 'member-edit.html', link: 'Complete your guild card',
       context: 'It’s blank right now.' });
   }

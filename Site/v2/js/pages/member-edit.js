@@ -43,14 +43,20 @@ async function init() {
     return;
   }
 
-  const existing = members.find((m) => m.oid === oid)
+  const stored = members.find((m) => m.oid === oid);
+  const isNew = !stored;
+  const existing = stored
     || { oid, name: oid === session.oid ? session.name : '', email: oid === session.oid ? session.email : undefined, skills: {}, fun_facts: [] };
   const orgName = (config.branding || {}).org_name || 'Activity Board';
   const isMe = oid === session.oid;
 
   const h1 = document.getElementById('page-title');
-  if (h1) h1.textContent = isMe ? 'Your guild card' : `Guild card: ${existing.name}`;
-  document.title = `Edit guild card — ${orgName}`;
+  if (h1) {
+    h1.textContent = isNew
+      ? (isMe ? 'Create your guild card' : `Create guild card: ${existing.name || oid}`)
+      : (isMe ? 'Your guild card' : `Guild card: ${existing.name}`);
+  }
+  document.title = `${isNew ? 'Create' : 'Edit'} guild card — ${orgName}`;
 
   const bcMember = document.getElementById('breadcrumb-member');
   if (bcMember) {
@@ -60,10 +66,10 @@ async function init() {
 
   const draftKey = `member-edit-${oid}`;
   const draft = loadDraft(draftKey);
-  renderForm(existing, config, draft, draftKey);
+  renderForm(existing, config, draft, draftKey, isNew);
 }
 
-function renderForm(member, config, draft, draftKey) {
+function renderForm(member, config, draft, draftKey, isNew) {
   const container = document.getElementById('edit-form-container');
   if (!container) return;
 
@@ -162,8 +168,12 @@ function renderForm(member, config, draft, draftKey) {
 
   /* Actions */
   const actions = el('div', { class: 'form-actions' });
-  const submitBtn = el('button', { type: 'submit', class: 'btn' }, 'Save card');
-  const cancelBtn = el('a', { href: `member.html?id=${encodeURIComponent(member.oid)}`, class: 'btn btn-secondary' }, 'Cancel');
+  const submitLabel = isNew ? 'Create card' : 'Save card';
+  const submitBtn = el('button', { type: 'submit', class: 'btn' }, submitLabel);
+  const cancelBtn = el('a', {
+    href: isNew ? 'index.html' : `member.html?id=${encodeURIComponent(member.oid)}`,
+    class: 'btn btn-secondary',
+  }, 'Cancel');
   actions.appendChild(submitBtn);
   actions.appendChild(cancelBtn);
   form.appendChild(actions);
@@ -189,6 +199,7 @@ function renderForm(member, config, draft, draftKey) {
 
     const out = {
       ...member,
+      ...(isNew ? { joined_at: new Date().toISOString() } : {}),
       name: v.name,
       role_team: v.role_team,
       skills,
@@ -211,7 +222,7 @@ function renderForm(member, config, draft, draftKey) {
       location.href = `member.html?id=${encodeURIComponent(member.oid)}`;
     } catch (err) {
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Save card';
+      submitBtn.textContent = submitLabel;
       const detail = err.status === 403 ? 'You do not have permission.' : err.message;
       showErrors([{ field: 'name', message: `Could not save: ${detail}` }], 'form-errors');
     }
