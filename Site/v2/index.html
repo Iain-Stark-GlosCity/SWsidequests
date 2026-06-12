@@ -32,8 +32,6 @@
   <!-- shell:end -->
 
   <main id="main" class="site-main">
-    <div id="welcome-banner"></div>
-
     <div class="section-toolbar">
       <h1 id="page-title">Board</h1>
       <div class="board-controls" aria-label="Board controls">
@@ -47,17 +45,19 @@
 
     <p id="home-greeting" class="home-greeting"></p>
 
-    <section aria-labelledby="next-steps-heading">
-      <h2 id="next-steps-heading">Your next steps</h2>
-      <div id="next-steps">
-        <p class="loading">Loading…</p>
-      </div>
-    </section>
+    <div class="home-grid" id="home-grid">
+      <section aria-labelledby="next-steps-heading">
+        <h2 id="next-steps-heading">Your next steps</h2>
+        <div id="next-steps">
+          <p class="loading">Loading…</p>
+        </div>
+      </section>
 
-    <section aria-labelledby="learning-heading" id="learning-section" hidden>
-      <h2 id="learning-heading">Fresh learning</h2>
-      <div id="learning-list"></div>
-    </section>
+      <section aria-labelledby="learning-heading" id="learning-section" hidden>
+        <h2 id="learning-heading">Fresh learning</h2>
+        <div id="learning-list"></div>
+      </section>
+    </div>
 
     <section aria-labelledby="all-activity-heading">
       <h2 id="all-activity-heading">All activity</h2>

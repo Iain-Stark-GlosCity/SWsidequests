@@ -1,8 +1,9 @@
 import { requireSignIn } from '../auth.js';
-import { ensureRegistered } from '../onboarding.js';
+import { ensureMember } from '../onboarding.js';
 import { loadConfig, t } from '../config-loader.js';
-import { loadItems, loadLeaderboard, rankFor, timeAgo, fullDate } from '../data.js';
-import { el, announce, chipEl, statusVariant, moveFocus } from '../dom.js';
+import { loadItems, loadLeaderboard, loadMembers, rankFor, timeAgo, fullDate } from '../data.js';
+import { el, announce, chipEl, statusVariant } from '../dom.js';
+import { isCardBlank } from '../guild-card.js';
 
 const SECTIONS = [
   { type: 'experiment', termKey: 'items.experiment', newHref: 'new-experiment.html' },
@@ -19,19 +20,15 @@ let _items = [];
 let _leaderboard = {};
 let _config = null;
 let _session = null;
+let _myMember = null;
 let _filter = 'all';
 let _autoUpdateTimer = null;
 
 async function init() {
   _session = await requireSignIn();
   if (!_session) return;
-
-  /* First connect: no member profile yet → welcome flow registers you */
-  if (await ensureRegistered(_session)) return;
-
   _config = await loadConfig();
   applyTerminology();
-  renderWelcomeBanner();
   await refresh();
   setupControls();
 }
@@ -49,12 +46,20 @@ async function refresh() {
   if (loadingEl) loadingEl.hidden = false;
   try {
     const wantPoints = _config.points && _config.points.enabled;
-    const [items, lb] = await Promise.all([
+    const [items, lb, members] = await Promise.all([
       loadItems(),
       wantPoints ? loadLeaderboard().catch(() => ({})) : Promise.resolve({}),
+      loadMembers().catch(() => null),
     ]);
     _items = items;
     _leaderboard = lb;
+
+    /* First connect: registers you silently with a blank guild card;
+       the "complete your guild card" next step is the prompt */
+    if (members && !_myMember) {
+      _myMember = await ensureMember(_session, members);
+    }
+
     renderGreeting();
     renderNextSteps();
     renderLearning();
@@ -110,45 +115,24 @@ function buildPulse() {
   return `Across the team: ${counts.join(', ')}.`;
 }
 
-/* ── Post-onboarding welcome banner ──────────────────────────────────────── */
-
-function renderWelcomeBanner() {
-  const params = new URLSearchParams(location.search);
-  if (params.get('welcome') !== '1') return;
-  const box = document.getElementById('welcome-banner');
-  if (!box) return;
-
-  const first = (_session.name || '').split(/\s+/)[0] || 'there';
-  const banner = el('div', { class: 'status-message status-message--success', role: 'status' },
-    el('p', { text: `You're all set, ${first} — your profile is live. This page is your home: your next steps are listed first, and you can update your profile any time from the Members page.` }),
-  );
-  const dismiss = el('button', { type: 'button', class: 'status-message__dismiss',
-    'aria-label': 'Dismiss welcome message' },
-    el('span', { 'aria-hidden': 'true' }, '×'));
-  dismiss.addEventListener('click', () => {
-    box.replaceChildren();
-    moveFocus(document.getElementById('page-title'));
-  });
-  banner.appendChild(dismiss);
-  box.replaceChildren(banner);
-
-  /* Strip the query so a refresh doesn't re-show the banner */
-  history.replaceState(null, '', location.pathname);
-}
-
 /* ── Your next steps — light-touch nudges that close the loop ────────────── */
 
-function pointsSuffix(key) {
+function pointsNote(key) {
   const pts = _config.points;
-  if (!pts || !pts.enabled || !pts.values || !pts.values[key]) return '.';
+  if (!pts || !pts.enabled || !pts.values || !pts.values[key]) return '';
   const ptsName = (_config.terminology || {}).points_name || 'points';
-  return ` and earns ${pts.values[key]} ${ptsName}.`;
+  return ` Earns ${pts.values[key]} ${ptsName}.`;
 }
 
 function buildNudges() {
   const oid = _session.oid;
   const now = Date.now();
   const nudges = [];
+
+  if (_myMember && isCardBlank(_myMember)) {
+    nudges.push({ href: 'member-edit.html', link: 'Complete your guild card',
+      context: 'It’s blank right now.' });
+  }
 
   for (const item of _items) {
     const title = item.title || '(Untitled)';
@@ -160,22 +144,22 @@ function buildNudges() {
     if (item.item_type === 'experiment' && (owner || onTeam)) {
       if (item.status === 'designing') {
         nudges.push({ href, link: `Start “${title}” running`,
-          context: 'Still in design — kick it off when the test is ready.' });
+          context: 'Still in design.' });
       } else if (item.status === 'running') {
         nudges.push({ href, link: `Post an update on “${title}”`,
-          context: `Running${item.updated_at ? ` — last activity ${timeAgo(item.updated_at)}` : ''}. Wrap up when you have an answer.` });
+          context: item.updated_at ? `Last activity ${timeAgo(item.updated_at)}.` : '' });
       } else if (item.status === 'wrapping-up') {
         nudges.push({ href, link: `Share the finding for “${title}”`,
-          context: `Sharing what you learned closes the loop${pointsSuffix('experiment_complete')}` });
+          context: `Wrapping up.${pointsNote('experiment_complete')}` });
       }
     } else if (item.item_type === 'session' && owner) {
       const date = item.session_date ? new Date(item.session_date).getTime() : null;
       if (item.status === 'scheduled' && (!date || date <= now)) {
         nudges.push({ href, link: `Mark “${title}” as happened`,
-          context: 'Then share the output so others can learn from it.' });
+          context: '' });
       } else if (item.status === 'happened') {
         nudges.push({ href, link: `Share the output from “${title}”`,
-          context: `What was produced or decided? Sharing it closes the loop${pointsSuffix('session_host')}` });
+          context: `Awaiting output.${pointsNote('session_host')}` });
       }
     } else if (item.item_type === 'session' && attending && item.status === 'scheduled'
                && item.session_date && new Date(item.session_date).getTime() > now) {
@@ -183,7 +167,7 @@ function buildNudges() {
         context: `Happening ${fullDate(item.session_date)}.` });
     } else if (item.item_type === 'challenge' && owner && item.status === 'open') {
       nudges.push({ href, link: `Review your challenge “${title}”`,
-        context: `Open since ${timeAgo(item.created_at)} — close it when you have what you need.` });
+        context: `Open since ${timeAgo(item.created_at)}.` });
     }
   }
 
@@ -204,7 +188,7 @@ function renderNextSteps() {
   for (const n of nudges) {
     ul.appendChild(el('li', { class: 'nudge-item' },
       el('a', { href: n.href }, n.link),
-      el('span', { class: 'nudge-context' }, n.context),
+      n.context ? el('span', { class: 'nudge-context' }, n.context) : null,
     ));
   }
   box.replaceChildren(ul);
@@ -212,33 +196,26 @@ function renderNextSteps() {
 
 function buildStarterBlock() {
   const wrap = el('div');
-  wrap.appendChild(el('p', { text: 'Nothing needs your attention right now — a good time to start something small.' }));
+  wrap.appendChild(el('p', { text: 'Nothing needs your attention.' }));
   const ul = el('ul', { class: 'nudge-list', role: 'list' });
 
-  const expSingular = t(_config, 'items.experiment.singular').toLowerCase();
-  ul.appendChild(starterItem('new-experiment.html', `Start a new ${expSingular}`,
-    'One question, one small test, one shared finding.'));
-
+  ul.appendChild(starterItem('new-experiment.html',
+    `Start a new ${t(_config, 'items.experiment.singular').toLowerCase()}`));
   if (_config.features.sessions) {
-    const sessSingular = t(_config, 'items.session.singular').toLowerCase();
-    ul.appendChild(starterItem('new-session.html', `Host a new ${sessSingular}`,
-      'Share something you know — half an hour is plenty.'));
+    ul.appendChild(starterItem('new-session.html',
+      `Host a new ${t(_config, 'items.session.singular').toLowerCase()}`));
   }
   if (_config.features.challenges) {
-    const chalSingular = t(_config, 'items.challenge.singular').toLowerCase();
-    ul.appendChild(starterItem('new-challenge.html', `Post a new ${chalSingular}`,
-      'Ask the group for ideas or help with a problem.'));
+    ul.appendChild(starterItem('new-challenge.html',
+      `Post a new ${t(_config, 'items.challenge.singular').toLowerCase()}`));
   }
 
   wrap.appendChild(ul);
   return wrap;
 }
 
-function starterItem(href, linkText, context) {
-  return el('li', { class: 'nudge-item' },
-    el('a', { href }, linkText),
-    el('span', { class: 'nudge-context' }, context),
-  );
+function starterItem(href, linkText) {
+  return el('li', { class: 'nudge-item' }, el('a', { href }, linkText));
 }
 
 /* ── Fresh learning — recently shared findings and outputs ───────────────── */
@@ -253,11 +230,14 @@ function renderLearning() {
     .sort((a, b) => new Date(b.closed_at || b.updated_at || 0) - new Date(a.closed_at || a.updated_at || 0))
     .slice(0, 4);
 
+  const grid = document.getElementById('home-grid');
   if (!shared.length) {
     section.hidden = true;
+    if (grid) grid.classList.remove('home-grid--two');
     return;
   }
   section.hidden = false;
+  if (grid) grid.classList.add('home-grid--two');
 
   const ul = el('ul', { class: 'learning-list', role: 'list' });
   for (const item of shared) {
@@ -336,7 +316,7 @@ function buildSection(type, termKey, newHref) {
   section.appendChild(hWrap);
 
   if (items.length === 0) {
-    section.appendChild(el('p', { class: 'empty-state', text: emptyMessage(type, allOfType.length, plural, singular) }));
+    section.appendChild(el('p', { class: 'empty-state', text: emptyMessage(allOfType.length, plural) }));
     return section;
   }
 
@@ -348,16 +328,11 @@ function buildSection(type, termKey, newHref) {
   return section;
 }
 
-function emptyMessage(type, totalOfType, plural, singular) {
+function emptyMessage(totalOfType, plural) {
   if (totalOfType > 0) {
     return `No ${plural.toLowerCase()} match the “${FILTER_LABELS[_filter]}” filter.`;
   }
-  const invitations = {
-    experiment: `No ${plural.toLowerCase()} yet. A ${singular.toLowerCase()} is a small test — one question, one finding. Start the first one.`,
-    session:    `No ${plural.toLowerCase()} yet. Host one to share something you know — half an hour is plenty.`,
-    challenge:  `No ${plural.toLowerCase()} yet. Post one when you need ideas or help from the group.`,
-  };
-  return invitations[type] || `No ${plural.toLowerCase()} yet.`;
+  return `No ${plural.toLowerCase()} yet.`;
 }
 
 function buildCard(item) {

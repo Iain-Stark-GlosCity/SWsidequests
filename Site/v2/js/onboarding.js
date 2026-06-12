@@ -1,11 +1,12 @@
-import { loadMembers } from './data.js';
+import { saveMember } from './data.js';
 
-/* First-connect registration gate.
-   The members store doubles as the user registry: a signed-in account with
-   no member profile is a first-time visitor, and gets sent to the welcome
-   flow (welcome.html) which creates one. A per-session flag avoids
-   re-fetching the member list on every page view once registration is
-   confirmed. */
+/* First-connect registration. The members store doubles as the user
+   registry: a signed-in account with no member record gets one created
+   silently — a blank guild card. No setup flow; the board invites the
+   user to complete their card when they're ready.
+
+   A per-session flag stops us retrying the create on every refresh if
+   the first attempt failed. */
 
 const FLAG_PREFIX = 'sw::registered::';
 
@@ -13,28 +14,38 @@ export function markRegistered(oid) {
   try { sessionStorage.setItem(FLAG_PREFIX + oid, '1'); } catch { /* ignore */ }
 }
 
-/* Returns true when the caller should stop rendering because we are
-   redirecting to the welcome flow. Fails open when the members API is
-   unreachable (e.g. static dev server without the API) so the board
-   still loads. */
-export async function ensureRegistered(session) {
-  if (!session || !session.authenticated) return false;
-  try {
-    if (sessionStorage.getItem(FLAG_PREFIX + session.oid)) return false;
-  } catch { /* ignore */ }
+function alreadyTried(oid) {
+  try { return Boolean(sessionStorage.getItem(FLAG_PREFIX + oid)); } catch { return false; }
+}
 
-  let members;
-  try {
-    members = await loadMembers();
-  } catch {
-    return false;
-  }
+/* Returns the caller's member record, creating a blank one on first
+   connect. `members` is the already-loaded member list; a newly created
+   record is appended to it. Returns null if creation isn't possible. */
+export async function ensureMember(session, members) {
+  if (!session || !session.authenticated || !Array.isArray(members)) return null;
 
-  if (members.some((m) => m.oid === session.oid)) {
+  const existing = members.find((m) => m.oid === session.oid);
+  if (existing) {
     markRegistered(session.oid);
-    return false;
+    return existing;
   }
 
-  location.href = 'welcome.html';
-  return true;
+  if (alreadyTried(session.oid)) return null;
+  markRegistered(session.oid);
+
+  const member = {
+    oid: session.oid,
+    name: session.name || 'New member',
+    email: session.email || undefined,
+    skills: {},
+    fun_facts: [],
+    joined_at: new Date().toISOString(),
+  };
+  try {
+    await saveMember(member);
+  } catch {
+    return null;
+  }
+  members.push(member);
+  return member;
 }

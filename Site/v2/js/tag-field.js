@@ -7,7 +7,7 @@ import { el } from './dom.js';
    in forms.js picks the change up. The current value travels in a hidden
    input (JSON array) named after `id`. */
 
-export function buildTagsField(id, label, hint, existing, maxCount) {
+export function buildTagsField(id, label, hint, existing, maxCount, suggestions) {
   const group = el('div', { class: 'form-group' });
   group.appendChild(el('label', { for: `${id}-input`, text: label }));
   group.appendChild(el('span', { class: 'form-hint', id: `${id}-hint`, text: hint }));
@@ -21,6 +21,12 @@ export function buildTagsField(id, label, hint, existing, maxCount) {
   const inputRow = el('div', { class: 'tag-input-row' });
   const input = el('input', { type: 'text', id: `${id}-input`, autocomplete: 'off',
     'aria-describedby': `${id}-hint` });
+  if (suggestions && suggestions.length) {
+    const datalist = el('datalist', { id: `${id}-suggestions` });
+    for (const s of suggestions) datalist.appendChild(el('option', { value: s }));
+    group.appendChild(datalist);
+    input.setAttribute('list', `${id}-suggestions`);
+  }
   const addBtn = el('button', { type: 'button', class: 'btn-secondary' }, 'Add');
   inputRow.appendChild(input);
   inputRow.appendChild(addBtn);
