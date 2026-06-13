@@ -132,6 +132,37 @@ function eq(a, b) {
   return stableStringify(a) === stableStringify(b);
 }
 
+/* Server-side mirror of the browser's item migration defaults. Existing blobs
+   may pre-date newer schema fields; normalize before authorization so a
+   self-service join/withdraw/update that arrives from a migrated browser copy
+   is not mistaken for an immutable-field edit. */
+function normalizeItemForAuthorization(raw) {
+  if (!raw || typeof raw !== 'object') return raw;
+  const item = { ...raw };
+
+  if (!item.item_id && item.quest_id) item.item_id = item.quest_id;
+  if (!item.item_type) item.item_type = 'experiment';
+
+  for (const k of ['team_oids', 'team_names', 'attendee_oids', 'attendee_names', 'updates', 'response_ids', 'spawned_ids']) {
+    if (!Array.isArray(item[k])) item[k] = [];
+  }
+
+  if (!item.points_awarded_at) item.points_awarded_at = null;
+  if (!item.grow_points_awarded_at) item.grow_points_awarded_at = null;
+
+  if (item.verdict === undefined) item.verdict = null;
+  for (const k of [
+    'learning_expected', 'learning_actual',
+    'hypothesis', 'predicted_outcome', 'success_metric',
+    'grow_decision', 'active_ingredients', 'grow_owner', 'grow_date',
+    'learn_decision', 'parent_id', 'outcome_id',
+  ]) {
+    if (typeof item[k] !== 'string') item[k] = '';
+  }
+
+  return item;
+}
+
 /* Did the (oids, names) pair change only by the caller adding or removing
    themselves? Names must move in lockstep with oids. */
 function isSelfDelta(curOids, curNames, newOids, newNames, principal) {
@@ -179,6 +210,8 @@ const MUTABLE_FIELDS = [
      response ids to a challenge (wiring a posted response). */
 function authorizeItemWrite(current, incoming, principal, admin) {
   if (!principal) return { ok: false, status: 401, reason: 'Sign in required' };
+  current = normalizeItemForAuthorization(current);
+  incoming = normalizeItemForAuthorization(incoming);
 
   if ((incoming.posted_by_oid || null) !== (current.posted_by_oid || null) ||
       (incoming.host_oid || null) !== (current.host_oid || null) ||
@@ -220,4 +253,4 @@ function authorizeItemWrite(current, incoming, principal, admin) {
   return { ok: true };
 }
 
-module.exports = { parsePrincipal, adminSet, isAdmin, isItemOwner, authorizeItemWrite, stableStringify };
+module.exports = { parsePrincipal, adminSet, isAdmin, isItemOwner, authorizeItemWrite, stableStringify, normalizeItemForAuthorization };

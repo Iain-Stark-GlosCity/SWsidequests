@@ -193,6 +193,43 @@ test('stranger may join an experiment team but not change anything else', () => 
   assert.equal(authorizeItemWrite(cur, sneaky, bob, false).ok, false);
 });
 
+test('stranger may self-service update legacy items after browser migration defaults', () => {
+  const cur = {
+    item_id: 'legacy-1',
+    item_type: 'experiment',
+    title: 'Legacy test',
+    question: 'Q',
+    description: '',
+    method_tags: [],
+    difficulty: null,
+    effort: null,
+    reward: null,
+    deadline: null,
+    status: 'running',
+    posted_by_oid: 'oid-alice',
+    posted_by_name: 'Alice',
+    team_oids: [],
+    team_names: [],
+    finding: '',
+    outcome: '',
+    challenge_id: null,
+    xp_reward: 100,
+    created_at: 't0',
+    updated_at: 't0',
+    closed_at: null,
+    updates: [],
+    points_awarded_at: null,
+  };
+  const migratedJoin = experiment({
+    ...cur,
+    team_oids: ['oid-bob'],
+    team_names: ['Bob'],
+    updated_at: 't1',
+  });
+
+  assert.equal(authorizeItemWrite(cur, migratedJoin, bob, false).ok, true);
+});
+
 test('stranger may append updates they authored, not forge or rewrite them', () => {
   const cur = experiment({ updates: [{ id: 'u1', author_oid: 'oid-alice', author_name: 'Alice', text: 'hi', timestamp: 't0' }] });
   const fine = { ...cur, updates: [...cur.updates, { id: 'u2', author_oid: 'oid-bob', author_name: 'Bob', text: 'note', timestamp: 't1' }] };
