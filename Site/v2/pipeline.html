@@ -42,7 +42,7 @@
   </header>
   <!-- shell:end -->
 
-  <main id="main" class="site-main">
+  <main id="main" class="site-main" tabindex="-1">
     <div class="section-toolbar">
       <h1 id="page-title">Pipeline</h1>
       <a href="new-experiment.html" class="btn btn-secondary" id="new-experiment-link">
@@ -55,12 +55,12 @@
     <fieldset class="filter-bar">
       <legend>Show</legend>
       <div class="filter-options">
-        <label class="label-inline">
-          <input type="radio" name="pipeline-filter" value="all" checked>
+        <label class="label-inline" for="pipeline-filter-all">
+          <input type="radio" name="pipeline-filter" id="pipeline-filter-all" value="all" checked>
           Everyone’s
         </label>
-        <label class="label-inline">
-          <input type="radio" name="pipeline-filter" value="mine">
+        <label class="label-inline" for="pipeline-filter-mine">
+          <input type="radio" name="pipeline-filter" id="pipeline-filter-mine" value="mine">
           Mine
         </label>
       </div>

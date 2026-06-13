@@ -84,6 +84,13 @@
   text-decoration-thickness: 2px;
 }
 
+/* Hide a nav item whose only link is hidden (e.g. Admin for non-admins) so it
+   leaves no phantom gap. Visibility is driven by shell.js from the session's
+   admin state, keeping the link and the page guard in step. */
+.site-header nav li:has(> a[hidden]) {
+  display: none;
+}
+
 .shell-actions {
   display: flex;
   align-items: center;
@@ -594,6 +601,19 @@
   border-left: 6px solid var(--accent);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
+}
+
+/* One-line orientation sentence above the personal greeting. Empty until JS
+   fills it, so it collapses cleanly when there's nothing to say. */
+.board-intro {
+  font-size: var(--font-size-lg);
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--space-4);
+}
+
+.board-intro:empty {
+  display: none;
 }
 
 .home-grid {

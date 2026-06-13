@@ -42,7 +42,7 @@
   </header>
   <!-- shell:end -->
 
-  <main id="main" class="site-main">
+  <main id="main" class="site-main" tabindex="-1">
     <div class="section-toolbar">
       <h1 id="page-title">Learning wall</h1>
     </div>
@@ -52,8 +52,8 @@
     <fieldset class="filter-bar">
       <legend>Filter by verdict</legend>
       <div class="filter-options" id="verdict-filter">
-        <label class="label-inline">
-          <input type="radio" name="verdict-filter" value="all" checked>
+        <label class="label-inline" for="verdict-filter-all">
+          <input type="radio" name="verdict-filter" id="verdict-filter-all" value="all" checked>
           All
         </label>
       </div>
