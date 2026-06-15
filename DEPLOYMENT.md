@@ -176,6 +176,11 @@ The React app at `Site/` and the v2 app at `Site/v2/` can coexist indefinitely �
 
 The only lasting side-effect of keeping both is that the site-wide `navigationFallback` in `staticwebapp.config.json` points unmatched navigation requests to the React app's `/index.html` rather than `/v2/404.html`. Unmatched navigation paths fall into the React SPA rather than serving a plain 404 page. This causes no functional breakage.
 
-> **Note — v2 trailing slash:** v2 uses relative asset paths (`href="css/tokens.css"`, `src="js/shell.js"`). These only resolve correctly when the page is served from a URL ending in a slash (`/v2/`). If a browser lands on `/v2` *without* the trailing slash, it resolves those paths against the site root (`/css/...`, `/js/...`), they 404, the fallback serves `index.html` as `text/html`, and browsers with strict MIME checking (`X-Content-Type-Options: nosniff`) reject the stylesheet/module. The `{ "route": "/v2", "redirect": "/v2/", "statusCode": 301 }` route forces the trailing slash so relative paths always resolve. Do not remove it.
+> **Note — v2 base path:** v2 uses relative asset paths (`href="css/tokens.css"`, `src="js/shell.js"`). These only resolve correctly when the document's base URL ends in `/v2/`. If a browser lands on `/v2` *without* the trailing slash, relative paths would otherwise resolve against the site root (`/css/...`, `/js/...`), 404, and the fallback would serve `index.html` as `text/html`, which strict browsers (`X-Content-Type-Options: nosniff`) reject. **Two safeguards prevent this:**
+>
+> 1. Every v2 page has `<base href="/v2/">` in its `<head>` (right after the viewport meta), so relative URLs always resolve against `/v2/` regardless of trailing slash. This is the primary, deterministic fix. If v2 is ever deployed at a different base path, update this value (or remove it for a root deploy).
+> 2. The `{ "route": "/v2", "redirect": "/v2/", "statusCode": 301 }` route also forces the trailing slash at the platform level.
+>
+> Note: `<base href>` does not affect API calls (they use the root-absolute `/api`) or ES-module imports (resolved against each module's own URL).
 >
 > The fallback also uses `navigationFallback` with an `exclude` list for static assets (`/css/*`, `/js/*`, `/v2/css/*`, `/v2/js/*`, and asset file extensions) rather than a blanket `404` response override, so a genuinely missing asset returns a real 404 instead of HTML. Explicit `mimeTypes` entries for `.css`, `.js`, and `.mjs` are a further safety net.
