@@ -1,5 +1,6 @@
 {
   "routes": [
+    { "route": "/v2", "redirect": "/v2/", "statusCode": 301 },
     { "route": "/.auth/login/github", "statusCode": 404 },
     { "route": "/.auth/login/twitter", "statusCode": 404 },
     { "route": "/api/config", "methods": ["GET"], "allowedRoles": ["anonymous", "authenticated"] },
