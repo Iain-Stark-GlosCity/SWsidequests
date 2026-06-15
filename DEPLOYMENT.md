@@ -174,4 +174,8 @@ The React app at `Site/` and the v2 app at `Site/v2/` can coexist indefinitely �
 - `https://<site>/` — original React app (unchanged)
 - `https://<site>/v2/` — rebuilt v2 app
 
-The only lasting side-effect of keeping both is that the site-wide 404 rewrite in `staticwebapp.config.json` points to the React app's `/index.html` rather than `/v2/404.html`. Unmatched paths fall into the React SPA rather than serving a plain 404 page. This causes no functional breakage.
+The only lasting side-effect of keeping both is that the site-wide `navigationFallback` in `staticwebapp.config.json` points unmatched navigation requests to the React app's `/index.html` rather than `/v2/404.html`. Unmatched navigation paths fall into the React SPA rather than serving a plain 404 page. This causes no functional breakage.
+
+> **Note — v2 trailing slash:** v2 uses relative asset paths (`href="css/tokens.css"`, `src="js/shell.js"`). These only resolve correctly when the page is served from a URL ending in a slash (`/v2/`). If a browser lands on `/v2` *without* the trailing slash, it resolves those paths against the site root (`/css/...`, `/js/...`), they 404, the fallback serves `index.html` as `text/html`, and browsers with strict MIME checking (`X-Content-Type-Options: nosniff`) reject the stylesheet/module. The `{ "route": "/v2", "redirect": "/v2/", "statusCode": 301 }` route forces the trailing slash so relative paths always resolve. Do not remove it.
+>
+> The fallback also uses `navigationFallback` with an `exclude` list for static assets (`/css/*`, `/js/*`, `/v2/css/*`, `/v2/js/*`, and asset file extensions) rather than a blanket `404` response override, so a genuinely missing asset returns a real 404 instead of HTML. Explicit `mimeTypes` entries for `.css`, `.js`, and `.mjs` are a further safety net.
