@@ -11,12 +11,30 @@
     "401": {
       "redirect": "/v2/signin.html",
       "statusCode": 302
-    },
-    "404": {
-      "rewrite": "/index.html"
     }
   },
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": [
+      "/css/*",
+      "/js/*",
+      "/v2/css/*",
+      "/v2/js/*",
+      "/*.css",
+      "/*.js",
+      "/*.mjs",
+      "/*.json",
+      "/*.{png,jpg,jpeg,gif,svg,ico,webp,woff,woff2,ttf,eot}"
+    ]
+  },
   "mimeTypes": {
-    ".jsx": "text/babel"
+    ".jsx": "text/babel",
+    ".css": "text/css",
+    ".js": "text/javascript",
+    ".mjs": "text/javascript",
+    ".json": "application/json",
+    ".svg": "image/svg+xml",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2"
   }
 }

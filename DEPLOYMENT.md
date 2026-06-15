@@ -174,4 +174,6 @@ The React app at `Site/` and the v2 app at `Site/v2/` can coexist indefinitely �
 - `https://<site>/` — original React app (unchanged)
 - `https://<site>/v2/` — rebuilt v2 app
 
-The only lasting side-effect of keeping both is that the site-wide 404 rewrite in `staticwebapp.config.json` points to the React app's `/index.html` rather than `/v2/404.html`. Unmatched paths fall into the React SPA rather than serving a plain 404 page. This causes no functional breakage.
+The only lasting side-effect of keeping both is that the site-wide `navigationFallback` in `staticwebapp.config.json` points unmatched navigation requests to the React app's `/index.html` rather than `/v2/404.html`. Unmatched navigation paths fall into the React SPA rather than serving a plain 404 page. This causes no functional breakage.
+
+> **Note:** The fallback uses `navigationFallback` with an `exclude` list for static assets (`/css/*`, `/js/*`, `/v2/css/*`, `/v2/js/*`, and asset file extensions) rather than a blanket `404` response override. This ensures a missing or misrouted `.css`/`.js` file returns a real 404 instead of being rewritten to `index.html` and served as `text/html` — which breaks stylesheet and ES-module loading in browsers that enforce strict MIME checking (`X-Content-Type-Options: nosniff`). Explicit `mimeTypes` entries for `.css`, `.js`, and `.mjs` provide a second layer of protection.
